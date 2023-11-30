@@ -1,0 +1,334 @@
+#include <WiFiClientSecure.h>
+#include <PubSubClient.h>
+#include <ArduinoJson.h>
+#include <Adafruit_MLX90614.h>
+#include <DFRobot_MLX90614.h>
+DFRobot_MLX90614_I2C sensor;   
+
+#define enA 19
+#define enB 18
+#define in1 32  
+#define in2 33  
+#define in3 25 
+#define in4 26 
+
+#define SENSOR_FLAMA_PIN 2
+#define WATER_PUMP_PIN 14 
+
+
+const char * WIFI_SSID = "Flia-SEJAS";
+const char * WIFI_PASS = "2742127hugo";
+
+const char * MQTT_BROKER = "a2h727x7dlfrio-ats.iot.us-east-2.amazonaws.com";
+const int MQTT_BROKER_PORT = 8883;
+
+const char * MQTT_CLIENT_ID = "ESP32_CLIENT";
+const char * UPDATE_ACCEPTED_TOPIC = "$aws/things/bombero/shadow/update/accepted";
+const char * TOPIC_BOMBA = "check/bomba";
+const char * UPDATE_TOPIC = "$aws/things/bombero/shadow/update";
+
+const char AMAZON_ROOT_CA1[] PROGMEM = R"EOF(
+-----BEGIN CERTIFICATE-----
+MIIDQTCCAimgAwIBAgITBmyfz5m/jAo54vB4ikPmljZbyjANBgkqhkiG9w0BAQsF
+ADA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRkwFwYDVQQDExBBbWF6
+b24gUm9vdCBDQSAxMB4XDTE1MDUyNjAwMDAwMFoXDTM4MDExNzAwMDAwMFowOTEL
+MAkGA1UEBhMCVVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJv
+b3QgQ0EgMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALJ4gHHKeNXj
+ca9HgFB0fW7Y14h29Jlo91ghYPl0hAEvrAIthtOgQ3pOsqTQNroBvo3bSMgHFzZM
+9O6II8c+6zf1tRn4SWiw3te5djgdYZ6k/oI2peVKVuRF4fn9tBb6dNqcmzU5L/qw
+IFAGbHrQgLKm+a/sRxmPUDgH3KKHOVj4utWp+UhnMJbulHheb4mjUcAwhmahRWa6
+VOujw5H5SNz/0egwLX0tdHA114gk957EWW67c4cX8jJGKLhD+rcdqsq08p8kDi1L
+93FcXmn/6pUCyziKrlA4b9v7LWIbxcceVOF34GfID5yHI9Y/QCB/IIDEgEw+OyQm
+jgSubJrIqg0CAwEAAaNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMC
+AYYwHQYDVR0OBBYEFIQYzIU07LwMlJQuCFmcx7IQTgoIMA0GCSqGSIb3DQEBCwUA
+A4IBAQCY8jdaQZChGsV2USggNiMOruYou6r4lK5IpDB/G/wkjUu0yKGX9rbxenDI
+U5PMCCjjmCXPI6T53iHTfIUJrU6adTrCC2qJeHZERxhlbI1Bjjt/msv0tadQ1wUs
+N+gDS63pYaACbvXy8MWy7Vu33PqUXHeeE6V/Uq2V8viTO96LXFvKWlJbYK8U90vv
+o/ufQJVtMVT8QtPHRh8jrdkPSHCa2XV4cdFyQzR1bldZwgJcJmApzyMZFo6IQ6XU
+5MsI+yMRQ+hDKXJioaldXgjUkK642M4UwtBV8ob2xJNDd2ZhwLnoQdeXeGADbkpy
+rqXRfboQnoZsG4q5WTP468SQvvG5
+-----END CERTIFICATE-----
+)EOF";
+
+const char CERTIFICATE[] PROGMEM = R"KEY(
+-----BEGIN CERTIFICATE-----
+MIIDWjCCAkKgAwIBAgIVALRDqbSykjmJPbz3mGwCZZqDMR/iMA0GCSqGSIb3DQEB
+CwUAME0xSzBJBgNVBAsMQkFtYXpvbiBXZWIgU2VydmljZXMgTz1BbWF6b24uY29t
+IEluYy4gTD1TZWF0dGxlIFNUPVdhc2hpbmd0b24gQz1VUzAeFw0yMzExMjQyMDQ4
+NTFaFw00OTEyMzEyMzU5NTlaMB4xHDAaBgNVBAMME0FXUyBJb1QgQ2VydGlmaWNh
+dGUwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCnrsdV/bEDwFbc6HiE
+mzKL0WswBtrFszUxNvKIiVbxR4iOYVvb2MzbqMB4uNtYqbZFvD7ldZCUSJFOPVfE
+JUCKVTwEkYn24K2PEWEVB0imvoThx2m4lRB4G9BdwYJNg138v5dOsjM9DNC2RTe6
+HCTLZ4MSVndt0YEieqwLVgN4PYiywvXWOzwKRUi/iXW94UpZ3lFwXS1ZRo4POVr+
+MbiHITibphlXbZmNhNBY+biXHjC4C7XXZjtvEPjkKMUt5FO8/Sn4D4GMzNmssslb
+6XRdhC2LWPHMQa/UeTo6cjT2Xy7QTS1nAp48gzVuMtdGK5Zepwc7nvmh1vOhJ99j
+wUw1AgMBAAGjYDBeMB8GA1UdIwQYMBaAFDoBz2SPzp1AqYGDyOed5AXJ8tw6MB0G
+A1UdDgQWBBQQaN4dLcx53ECtdYRVxFNnXqvDsjAMBgNVHRMBAf8EAjAAMA4GA1Ud
+DwEB/wQEAwIHgDANBgkqhkiG9w0BAQsFAAOCAQEAbHcM5xOqeszER/8S0+L/+LtX
+kLSHhyDa//glQywRtYHxyMwVfiuLn07jz9XiY+6SNgq5qap0hBmUjgWU6j5JnJoK
+2cP/yJv0dcvBBh2+B2x/8n8svmVfyrtOrDuSmIu1529Pi4Z+HsPjvndz6mzh/iMD
+wBY76Bjt4kwsrvFMXktSkdTn3twbM2NcjjQSNsppKbmCo1E7mXvIvX9Ae0DDP0fR
+QOHFN5TeaZUvOdl7MY5c/0R8cjonDi6xMjsjmr/EzLO+4GYiUbDJYGkmTf+aJWx+
++HRoj6lutg72Nmvd63k2MLAI5ZzTS61G0d7QNl2BGrVmmirwJ7Fa9GSwz5ulWQ==
+-----END CERTIFICATE-----
+)KEY";
+
+const char PRIVATE_KEY[] PROGMEM = R"KEY(
+-----BEGIN RSA PRIVATE KEY-----
+MIIEpQIBAAKCAQEAp67HVf2xA8BW3Oh4hJsyi9FrMAbaxbM1MTbyiIlW8UeIjmFb
+29jM26jAeLjbWKm2Rbw+5XWQlEiRTj1XxCVAilU8BJGJ9uCtjxFhFQdIpr6E4cdp
+uJUQeBvQXcGCTYNd/L+XTrIzPQzQtkU3uhwky2eDElZ3bdGBInqsC1YDeD2IssL1
+1js8CkVIv4l1veFKWd5RcF0tWUaODzla/jG4hyE4m6YZV22ZjYTQWPm4lx4wuAu1
+12Y7bxD45CjFLeRTvP0p+A+BjMzZrLLJW+l0XYQti1jxzEGv1Hk6OnI09l8u0E0t
+ZwKePIM1bjLXRiuWXqcHO575odbzoSffY8FMNQIDAQABAoIBAQCBLlQhOj16D16b
+93iJaGsLbj2ulUlLj6FGFffJGk1humNIlVbISwCfpSUKnBdX+f8TQFAQRH8qzbEr
+3nRUBwLuz3Vaa6knCbaMBq6NHbxpwVLsAc2/xw8WCQ+Ae0jgYHky84MkvIJe4RWV
+pkOlXHM4RLmkkfqWHxXmMy2B2jT4FuheKYZ7WuOlC/gT3dnd+e347olPW+G0KinS
+uisa9DSAOWoHN4X8Cr6MN3yxlFLwEsEPY/dnxXxxJfiaJJqHngQ05CRmD2aEK7cB
+fv92h9PnyvbfO898fn8QKPGq5aYXE4FwWUPYZDgebgR5ck0kuaAPx8TmX8Wds2HF
+UmI5fUtNAoGBANawKF+43rII+V5ABnbtAIeWyaIqLFkoLoVO9UtFg5HnXNnuJhyx
+8QC5CD4XLOQXmRx/a8Wz32RxwodaG4slB1GhVfI67ZD9QYdXrAVhRCjN5kRUDTee
+Vxpk15uaawYrrVGWeMqkWz4N7GI/IXcOmgDyaoqLNgb1kCR9/j3oYIs7AoGBAMfz
+EZNWMuvQSbRly4Dsbn6Hu++fkN9OTiFmG+Ji4JBMpz/KaJx9ADeA8PaLW0Kn5vPU
+pr0OQxACE1lg0B6oibZgd5CFSwwzowPGckn0+wYBzE/hdJIjA9oSJers61N1EqKr
+H9kE8azIUC3r7Tc7mIQZp8S5RQYtKp2BLWply69PAoGBAMm0vFojEWhoMhKxSOGX
+jvXVYCAyS3SA4iRxqNlNuG3u2DgRHlG7hVlOf0YG9DBhU4OI3DLl6q8uirwsltBG
+u/egA2YQo3+j0ltcrcxoNGe5++yao8hrxh6QPFp/3Knxg2eyXk7V2LwWzM8JzWFU
+oLDfEeaVIO+s6/69OY/kskBdAoGAFLmcI8J2irzPNvSqMFXRaioVj9PhR1Qtgwa7
+cy6+ihZ364PGbhoC0L37vAJb1j/jD3kGQ2hcCSe967C+Qb9EbvP20LMQQVaE2hpS
+tFnBPzEmhU0gMRmSB6OD7KLcDY1//f5w0aTSjA9DSE9BCk2SFHc4TYrKncZGuYav
+N20PvL8CgYEAxLljC6kt/Si9wuJbwQADugssmPybCN8oFLhu/c+u4L/qx1cjtGXm
+FbWS6uEOyj2WKyTIJlAZw/zpXFuI1HoCaVHuFZ7aBrXLzv5NE34nbRGJP5gJVB2h
+/aB34Z8wlHKDfX8Q6k8xdWEs9G13wDH/6Q66P49Nr93MC2V5M+y606Y=
+-----END RSA PRIVATE KEY-----
+)KEY";
+
+WiFiClientSecure wiFiClient;
+PubSubClient mqttClient(wiFiClient);
+
+String builtInLed = "unknown";
+
+
+StaticJsonDocument<JSON_OBJECT_SIZE(6)> outputDoc;
+char outputBuffer[128];
+void reportBuiltInLed()
+{
+  outputDoc["state"]["reported"]["movimiento"] = builtInLed.c_str();
+  serializeJson(outputDoc, outputBuffer);
+  mqttClient.publish(UPDATE_TOPIC, outputBuffer);
+
+}
+
+
+void setBuiltInLed(String str, int cm)
+{
+  builtInLed = str;
+  if(builtInLed == "quieto" ){
+    Stop();
+  } else if(builtInLed == "girarIzquierda"){
+     turnLeft();
+     delay(800);
+     Stop();
+     delay(800);
+  } else if(builtInLed == "girarDerecha"){
+     turnRight();
+     delay(1000);
+     Stop();
+     delay(3000);
+  } else if(builtInLed =="avanzar"){
+     Forward();
+     delay(AdvanceInCentimeters(cm));
+     Stop();
+  } else if(builtInLed =="encendida"){
+     activatePump();
+     digitalWrite(WATER_PUMP_PIN, HIGH);
+  } else if(builtInLed =="retroceder"){
+     backword();
+     delay(AdvanceInCentimeters(cm));
+     Stop();
+  }
+}
+
+StaticJsonDocument<JSON_OBJECT_SIZE(64)> inputDoc;
+void callback(const char * topic, byte * payload, unsigned int lenght) {
+  String message;
+  for (int i = 0; i < lenght; i++) {
+    message += String((char) payload[i]);
+  }
+  Serial.println("Got" + String(topic));
+  if (String(topic) == UPDATE_ACCEPTED_TOPIC) {
+    Serial.println("Message from topic " + String(topic) + ":" + message);
+    DeserializationError err = deserializeJson(inputDoc, payload);
+    if (!err) {
+      String tmpbuiltInLed = String(inputDoc["state"]["desired"]["movimiento"].as<const char*>());
+      int distance = inputDoc["state"]["desired"]["distancia"];
+      Serial.println(distance);
+      //if(!tmpbuiltInLed.isEmpty() && !tmpbuiltInLed.equals(builtInLed)) setBuiltInLed(tmpbuiltInLed,distance);
+      setBuiltInLed(tmpbuiltInLed, distance);
+    }
+  }else if(String(topic) == TOPIC_BOMBA){
+    Serial.println("Message from topic " + String(topic) + ":" + message);
+    DeserializationError err = deserializeJson(inputDoc, payload);
+    if (!err) {
+      String tmpbuiltInLed = String(inputDoc["estadoBomba"].as<const char*>());
+      activatePump();
+    }
+
+  }
+}
+
+boolean mqttClientConnect() {
+  Serial.print("Connecting to " + String(MQTT_BROKER));
+  if (mqttClient.connect(MQTT_CLIENT_ID)) {
+    Serial.println("DONE!");
+    mqttClient.subscribe(UPDATE_ACCEPTED_TOPIC);
+    Serial.println("Subscribed to " + String(UPDATE_ACCEPTED_TOPIC));
+    mqttClient.subscribe(TOPIC_BOMBA);
+    Serial.println("Subscribed to " + String(TOPIC_BOMBA));
+  } else {
+    Serial.println("Can't connect to " + String(MQTT_BROKER));
+  }
+  return mqttClient.connected();
+}
+
+void setup() {
+
+  pinMode(enA, OUTPUT); 
+  pinMode(enB, OUTPUT); 
+  pinMode(in1, OUTPUT); 
+  pinMode(in2, OUTPUT); 
+  pinMode(in3, OUTPUT); 
+  pinMode(in4, OUTPUT);
+
+  Serial.begin(115200);
+  sensor.enterSleepMode();
+  delay(50);
+  sensor.enterSleepMode(false);
+  delay(200);
+  
+  pinMode(SENSOR_FLAMA_PIN, INPUT);  
+  pinMode(WATER_PUMP_PIN, OUTPUT);
+ 
+
+  Serial.begin(115200); 
+
+  
+  Serial.print("Connecting to " + String(WIFI_SSID));
+
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(200);
+    Serial.print(".");
+  }
+  Serial.println(" DONE!");
+
+  wiFiClient.setCACert(AMAZON_ROOT_CA1);
+  wiFiClient.setCertificate(CERTIFICATE);
+  wiFiClient.setPrivateKey(PRIVATE_KEY);
+
+  mqttClient.setServer(MQTT_BROKER, MQTT_BROKER_PORT);
+  mqttClient.setCallback(callback);
+}
+
+unsigned long previousConnectMillis = 0;
+
+void Forward(){
+ digitalWrite(in1, LOW); 
+ digitalWrite(in2, HIGH);  
+ digitalWrite(in3, LOW);   
+ digitalWrite(in4, HIGH); 
+ analogWrite(enA, 100);
+ analogWrite(enB, 100);
+}
+
+void Stop(){
+ digitalWrite(in1, LOW); 
+ digitalWrite(in2, LOW);  
+ digitalWrite(in3, LOW);  
+ digitalWrite(in4, LOW); 
+ analogWrite(enA, 0);
+ analogWrite(enB, 0);
+}
+
+void turnLeft(){
+  digitalWrite(in1, HIGH); 
+  digitalWrite(in2, LOW);  
+  digitalWrite(in3, LOW);  
+  digitalWrite(in4, HIGH); 
+  analogWrite(enA, 100);
+  analogWrite(enB, 100);
+
+ }
+
+ void turnRight(){
+  digitalWrite(in1, LOW); 
+  digitalWrite(in2, HIGH);  
+  digitalWrite(in3, HIGH);  
+  digitalWrite(in4, LOW); 
+  analogWrite(enA, 100);
+  analogWrite(enB, 100);
+ }
+
+void backword(){
+  digitalWrite(in1, HIGH); 
+  digitalWrite(in2, LOW);  
+  digitalWrite(in3, HIGH);   
+  digitalWrite(in4, LOW); 
+  analogWrite(enA, 100);
+  analogWrite(enB, 100);
+}
+
+ void activatePump(){
+   digitalWrite(WATER_PUMP_PIN, LOW);
+   delay(1000);
+   digitalWrite(WATER_PUMP_PIN, HIGH);
+ }
+
+ int AdvanceInCentimeters(int centimeters){
+   centimeters += 3;
+   return centimeters*31;
+ 
+ }
+ 
+int FireReport = 1 ;
+float previousReportedTemp = 0;
+
+float previousTempObject = 0;
+float previousTempAmbient = 0;
+
+void loop() {
+  digitalWrite(WATER_PUMP_PIN, HIGH);
+  
+  unsigned long now = millis();
+  if (!mqttClient.connected()) {
+    if (now - previousConnectMillis >= 2000) {
+      previousConnectMillis = now;
+      if (mqttClientConnect()) previousConnectMillis = 0;
+      else delay(1000);
+    }
+  } else { 
+    float objectTemp = sensor.getObjectTempCelsius();
+    int valueSensor = digitalRead(SENSOR_FLAMA_PIN);
+    if (abs(objectTemp - previousTempObject) >= 1 && valueSensor == 0 && objectTemp > 50.0){
+        outputDoc["state"]["reported"]["fireState"] = true;
+        outputDoc["state"]["reported"]["sensorFlama"] = !valueSensor;
+        outputDoc["state"]["reported"]["temperatura"] = int(objectTemp);
+        serializeJson(outputDoc, outputBuffer);
+        mqttClient.publish(UPDATE_TOPIC, outputBuffer); 
+        FireReport = valueSensor; 
+        Serial.println("Esta caliente");
+    }
+    else{
+      outputDoc["state"]["reported"]["fireState"] = false;
+      outputDoc["state"]["reported"]["sensorFlama"] = !valueSensor;
+      outputDoc["state"]["reported"]["temperatura"] = int(objectTemp);
+      serializeJson(outputDoc, outputBuffer);
+      mqttClient.publish(UPDATE_TOPIC, outputBuffer); 
+      FireReport = valueSensor; 
+      previousTempObject = objectTemp;
+    }
+    previousTempObject = objectTemp;
+    mqttClient.loop();
+    delay(20);
+  }
+}
