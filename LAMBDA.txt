@@ -1,0 +1,612 @@
+const AWS = require('aws-sdk');
+const Alexa = require('ask-sdk-core');
+const IotData = new AWS.IotData({endpoint: 'a2h727x7dlfrio-ats.iot.us-east-2.amazonaws.com'});
+
+
+AWS.config.update({
+    region: 'us-east-2',
+    apiVersion: '2012-08-10'
+});
+const dynamoDB = new AWS.DynamoDB.DocumentClient();
+
+var thing_name = "";
+const tableName = "clients";
+
+
+function getShadowPromise(params) {
+    return new Promise((resolve, reject) => {
+        IotData.getThingShadow(params, (err, data) => {
+            if (err) {
+                console.log(err, err.stack);
+                console.log("hubo un error al consultar el estado");
+                reject('Failed to get thing shadow ${err.errorMessage}');
+            } else {
+                resolve(JSON.parse(data.payload));
+            }
+        });
+    });
+}
+
+
+function checkUserThing(IDClient) {
+    const params = {
+        TableName: tableName,
+        KeyConditionExpression: 'IDClient = :idClient',
+        ExpressionAttributeValues: {
+            ':idClient': IDClient
+        }
+    };
+
+    return dynamoDB.query(params).promise()
+        .then(result => {
+            return result.Items || [];
+        })
+        .catch(error => {
+            console.error('Error al realizar la consulta en DynamoDB:', error);
+            throw error;
+        });
+}
+
+const LaunchRequestHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'LaunchRequest';
+    },
+    async handle(handlerInput) { 
+        const userId = handlerInput.requestEnvelope.context.System.user.userId;
+        try {
+            const things = await checkUserThing(userId); 
+            let speakOutput;
+            if (things.length === 0) {
+                speakOutput = `Hola cobo. No se encontraron dispositivos para vos. Para configurar un dispositivo podés decir registro + id o nombre del dispositivo`;
+            } else {
+                
+                const devicesName = things.map(thing => thing.IDThing).join(', ');
+                if(things.length > 1){
+                    speakOutput = `Hola Cobo. Se encontraron ${things.length} dispositivos tuyos, ${devicesName} ¿Cuál quieres configurar?`;
+                }else{
+                    speakOutput = `Hola Cobo. Se encontró un dispositivo tuyo: ${devicesName}`;
+                    thing_name = devicesName;
+                }
+            }
+            return handlerInput.responseBuilder
+                .speak(speakOutput)
+                .reprompt(speakOutput) 
+                .getResponse();
+        } catch (error) {
+            console.error(`Error al buscar dispositivos para vos`, error);
+            return handlerInput.responseBuilder
+                .speak('Lo siento, hubo un problema al buscar tus dispositivos.')
+                .reprompt()
+                .getResponse();
+        }
+    }
+};
+
+
+
+const QueryIntentHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'QueryIntent';
+    },
+    async handle(handlerInput) {
+        var builtInLed = 'unknown';
+        var ShadowParams = {
+           thingName: thing_name,
+        };
+        console.log("Estoy llegando hasta aqui");
+        await getShadowPromise(ShadowParams)
+          .then((result) => builtInLed = result.state.desired.builtInLed);
+        console.log(builtInLed);
+
+        var speakOutput = 'Error';
+        if (builtInLed == 'on') {
+            speakOutput = 'El led interno esta encendido';
+        } else if (builtInLed == 'off') {
+            speakOutput = 'El led interno esta apagado';
+        } else {
+            speakOutput = 'No se pudo consultar el estado del led interno, inténtelo más tarde';
+        }
+
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+  }
+};
+
+
+const QueryTemperatureIntentHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'QueryTemperatureIntent';
+    },
+    async handle(handlerInput) {
+        var builtInLed = 'unknown';
+        var ShadowParams = {
+           thingName: thing_name,
+        };
+        await getShadowPromise(ShadowParams)
+          .then((result) => builtInLed = result.state.reported.temperatura);
+        var speakOutput = `La temperatura que el bombero está detectando es de ${builtInLed} grados centigrados`;
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+  }
+};
+
+
+const QueryFireStateIntentHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'QueryFireStateIntent';
+    },
+    async handle(handlerInput) {
+        var builtInLed = 'unknown';
+        var ShadowParams = {
+           thingName: thing_name,
+        };
+        await getShadowPromise(ShadowParams)
+          .then((result) => builtInLed = result.state.reported.fireState);
+        var hablar = '';
+        if(builtInLed === true){
+            hablar = 'Confirmado, se ha detectado fuego, el robot deberia haber actuado con la regla correspondiente';
+        }else
+        {
+            hablar = 'Negativo, no se ha detectado fuego, por favor, permanezca alerta'
+        }
+        var speakOutput = `${hablar}`;
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+  }
+};
+
+
+const QueryFlameSensorStateIntentHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'QueryFlameSensorStateIntent';
+    },
+    async handle(handlerInput) {
+        var builtInLed = 'unknown';
+        var ShadowParams = {
+           thingName: thing_name,
+        };
+        await getShadowPromise(ShadowParams)
+          .then((result) => builtInLed = result.state.reported.sensorFlama);
+        
+        var hablar = '';
+        if(builtInLed === true){
+            hablar = 'ha detectado luz que posiblemente sea una llama';
+        }else
+        {
+            hablar = 'no ha detectado luz que tenga posibilidades de ser llama'
+        }
+        var speakOutput = `El sensor de flama  ${hablar}`;
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+  }
+};
+
+
+const CheckThingNameIntentHandler = {
+    canHandle(handlerInput){
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'CheckThingNameIntent';
+    },
+    handle(handlerInput){
+        var speakOutput;
+        if(thing_name !=""){
+            speakOutput = `El dispositivo que estás configurando actualmente es ${thing_name}`;
+        }
+        else{
+            speakOutput = `No estas configurando ningún dispositivo`;
+        }
+        
+        return handlerInput.responseBuilder.speak(speakOutput).reprompt(speakOutput).getResponse();
+    }
+    
+};
+
+const AvanzarIntentHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'AvanzarIntent';
+    },
+    handle(handlerInput) {
+        var speakOutput = 'Error';
+        if(thing_name === "")
+        {
+            speakOutput = "No estás configurando ningún dispositivo, por favor elige o registra un dispositivo a configurar";
+        }
+        else{
+            const centimetros = Alexa.getSlotValue(handlerInput.requestEnvelope, 'centimetros');
+            var AvanzarParams = {
+                thingName: thing_name,
+                payload: `{"state": {"desired": {"movimiento": "avanzar", "distancia": ${centimetros}}}}`,
+            };
+            IotData.updateThingShadow(AvanzarParams, function(err, data) {
+              if (err) console.log(err);
+            });
+
+            speakOutput = `El bombero está avanzando ${centimetros} centimetros`;
+        }
+        
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+  }
+};
+
+const GoBackIntentHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'GoBackIntent';
+    },
+    handle(handlerInput) {
+        var speakOutput = 'Error';
+        if(thing_name === "")
+        {
+            speakOutput = "No estás configurando ningún dispositivo, por favor elige o registra un dispositivo a configurar";
+        }
+        else{
+            const centimetros = Alexa.getSlotValue(handlerInput.requestEnvelope, 'centimetros');
+            var AvanzarParams = {
+                thingName: thing_name,
+                payload: `{"state": {"desired": {"movimiento": "retroceder", "distancia": ${centimetros}}}}`,
+            };
+            IotData.updateThingShadow(AvanzarParams, function(err, data) {
+              if (err) console.log(err);
+            });
+
+            speakOutput = `El bombero está retrocediendo ${centimetros} centimetros`;
+        }
+        
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+  }
+};
+
+const ChooseDeviceIntentHandler = {
+  canHandle(handlerInput){
+      return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+        && Alexa.getIntentName(handlerInput.requestEnvelope) === 'ChooseDeviceIntent';
+  },
+  async handle(handlerInput) { 
+        const userId = handlerInput.requestEnvelope.context.System.user.userId;
+        const deviceId = Alexa.getSlotValue(handlerInput.requestEnvelope, 'id');
+        try {
+            const things = await checkUserThing(userId); 
+            let speakOutput;
+            if (things.length === 0) {
+                speakOutput = `No tienes dispositivos registrados, por favor, registra uno para continuar`;
+            } else {
+                const deviceExists =  things.some(thing => thing.IDThing === deviceId);
+                if(deviceExists){
+                    thing_name = deviceId;
+                    speakOutput = `Perfecto, ahora estoy configurando el dispositivo ${deviceId}`;
+                }else{
+                    speakOutput = `Lamentablemente no pude encontrar el dispositivo que mencionas, intentálo de nuevo, dale.`;
+                    
+                }
+            }
+            return handlerInput.responseBuilder
+                .speak(speakOutput)
+                .reprompt(speakOutput) 
+                .getResponse();
+        } catch (error) {
+            console.error(`Error al buscar dispositivos para vos`, error);
+            return handlerInput.responseBuilder
+                .speak('Lo siento, hubo un problema al buscar tus dispositivos.')
+                .getResponse();
+        }
+    }
+};
+
+const StopIntentHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'StopIntent';
+    },
+    handle(handlerInput) {
+        var speakOutput = 'Error';
+        if(thing_name === "")
+        {
+            speakOutput = "No estás configurando ningún dispositivo, por favor elige o registra un dispositivo a configurar";
+        }
+        else{
+            var TurnLeftParams = {
+                thingName: thing_name,
+                payload: '{"state": {"desired": {"movimiento": "quieto", "distancia": 0}}}',
+            };
+            IotData.updateThingShadow(TurnLeftParams, function(err, data) {
+                if (err) console.log(err);
+            });
+
+            speakOutput = 'El bombero está deteniendo';
+        }
+        
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+  }
+};
+
+const TurnLeftIntentHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'TurnLeftIntent';
+    },
+    handle(handlerInput) {
+        var speakOutput = 'Error';
+        if(thing_name === "")
+        {
+            speakOutput = "No estás configurando ningún dispositivo, por favor elige o registra un dispositivo a configurar";
+        }
+        else{
+            var TurnLeftParams = {
+                thingName: thing_name,
+                payload: '{"state": {"desired": {"movimiento": "girarIzquierda", "distancia": 0}}}',
+            };
+            IotData.updateThingShadow(TurnLeftParams, function(err, data) {
+                if (err) console.log(err);
+            });
+
+            speakOutput = 'El bombero está girando a la izquierda';
+        }
+        
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+  }
+};
+
+const TurnRightIntentHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'TurnRightIntent';
+    },
+    handle(handlerInput) {
+        var speakOutput = 'Error';
+        if(thing_name === "")
+        {
+            speakOutput = "No estás configurando ningún dispositivo, por favor elige o registra un dispositivo a configurar";
+        }
+        else{
+            var TurnLeftParams = {
+                thingName: thing_name,
+                payload: '{"state": {"desired": {"movimiento": "girarDerecha", "distancia": 0}}}',
+            };
+            IotData.updateThingShadow(TurnLeftParams, function(err, data) {
+                if (err) console.log(err);
+            });
+
+            speakOutput = 'El bombero está girando a la derecha';
+        }
+        
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+  }
+};
+
+
+
+const TurnOnBombaIntentHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'TurnOnBombaIntent';
+    },
+    handle(handlerInput) {
+        var speakOutput = 'Error';
+        if(thing_name === "")
+        {
+            speakOutput = "No estás configurando ningún dispositivo, por favor elige o registra un dispositivo a configurar";
+        }
+        else{
+            var StopParams = {
+                thingName: thing_name,
+                payload: '{"state": {"desired": {"movimiento": "encendida"}}}',
+            };
+            IotData.updateThingShadow(StopParams, function(err, data) {
+                if (err) console.log(err);
+            });
+
+            speakOutput = '<speak><prosody volume="x-loud">Entendido, apagando fuego inmediatamente.</prosody></speak>';
+
+        }
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+  }
+};
+
+function registerClientThing(IDClient, IDThing) {
+    const params = {
+        TableName: tableName, 
+        Item: {
+            'IDClient': IDClient,
+            'IDThing': IDThing
+        }
+    };
+
+    return new Promise((resolve, reject) => {
+        dynamoDB.put(params, (error, data) => {
+            if (error) {
+                console.error('Error al registrar en DynamoDB:', error);
+                reject(error);
+            } else {
+                resolve(data);
+            }
+        });
+    });
+}
+
+const RegisterDeviceIntentHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'RegisterDeviceIntent';
+    },
+    async handle(handlerInput) { 
+        const userId = handlerInput.requestEnvelope.context.System.user.userId; 
+        const deviceId = Alexa.getSlotValue(handlerInput.requestEnvelope, 'id'); 
+        if (!deviceId) {
+            const speechText = 'No entendí el ID del dispositivo. Por favor dime el ID de tu dispositivo.';
+            return handlerInput.responseBuilder
+                .speak(speechText)
+                .reprompt(speechText)
+                .getResponse();
+        }
+        try {
+            const deviceExists = await checkDeviceShadow(deviceId);
+            if (deviceExists) {
+                await registerClientThing(userId, deviceId);
+                const speechText = `He registrado el dispositivo ${deviceId}. Actualmente estás configurando este dispositivo. Para cambiar de dispositivo, por favor dime: "Quiero configurar" seguido del nombre del dispositivo.`;
+                thing_name = deviceId; 
+                return handlerInput.responseBuilder
+                    .speak(speechText)
+                    .reprompt(speechText)
+                    .getResponse();
+            } else {
+                const speechText = 'Lo siento, no se encontró un dispositivo con ese nombre entre tus IOT things, por favor registra algo que exista.';
+                return handlerInput.responseBuilder
+                    .speak(speechText)
+                    .getResponse();
+            }
+        } catch (error) {
+            console.error('Error al verificar el dispositivo:', error);
+            const speechText = 'Hubo un error al verificar el estado del dispositivo.';
+            return handlerInput.responseBuilder
+                .speak(speechText)
+                .getResponse();
+        }
+    }
+};
+
+async function checkDeviceShadow(deviceId) {
+    const params = {
+        thingName: deviceId
+    };
+    try {
+        await IotData.getThingShadow(params).promise();
+        return true;
+    } catch (error) {
+        if (error.code === 'ResourceNotFoundException') {
+            return false;
+        } else {
+            throw error;
+        }
+    }
+}
+
+
+const HelpIntentHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'AMAZON.HelpIntent';
+    },
+    handle(handlerInput) {
+        var speakOutput = 'Error';
+        if(thing_name === "")
+        {
+            speakOutput = "No estás configurando ningún dispositivo, por favor elige o registra un dispositivo a configurar";
+        }
+        else{
+            speakOutput = 'Para controlar tu bombero puedes darle las instrucciones: Avanzar + cantidad en centimetros. Para detener su movimiento puedes decirle "Detener movimiento", Para girar a la izquierda y a la derecha menciona: "Girar" + Sentido de la direccion. Para consultar si existe un incendio preguntame ¿Existe un incendio activo?. Para activar la bomba de agua decime "Activa la bomba de agua"';
+        }
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+    }
+};
+
+const CancelAndStopIntentHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && (Alexa.getIntentName(handlerInput.requestEnvelope) === 'AMAZON.CancelIntent'
+                || Alexa.getIntentName(handlerInput.requestEnvelope) === 'AMAZON.StopIntent');
+    },
+    handle(handlerInput) {
+        const speakOutput = 'Adios!';
+
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .getResponse();
+    }
+};
+
+const FallbackIntentHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'AMAZON.FallbackIntent';
+    },
+    handle(handlerInput) {
+        const speakOutput = 'Intenta de nuevo.';
+
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+    }
+};
+
+const SessionEndedRequestHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'SessionEndedRequest';
+    },
+    handle(handlerInput) {
+        console.log(`~~~~ Session ended: ${JSON.stringify(handlerInput.requestEnvelope)}`);
+        // Any cleanup logic goes here.
+        return handlerInput.responseBuilder.getResponse(); // notice we send an empty response
+    }
+};
+
+const ErrorHandler = {
+    canHandle() {
+        return true;
+    },
+    handle(handlerInput, error) {
+        const speakOutput = 'Hubo un error. Intenta de nuevo.';
+        console.log(`~~~~ Error handled: ${JSON.stringify(error)}`);
+
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+    }
+};
+
+exports.handler = Alexa.SkillBuilders.custom()
+    .addRequestHandlers(LaunchRequestHandler,
+                        QueryIntentHandler,
+                        AvanzarIntentHandler,
+                        ChooseDeviceIntentHandler,
+                        StopIntentHandler,
+                        TurnLeftIntentHandler,
+                        TurnRightIntentHandler,
+                        QueryFlameSensorStateIntentHandler,
+                        TurnOnBombaIntentHandler,
+                        RegisterDeviceIntentHandler,
+                        HelpIntentHandler,
+                        GoBackIntentHandler,
+                        CancelAndStopIntentHandler,
+                        FallbackIntentHandler,
+                        CheckThingNameIntentHandler,
+                        QueryTemperatureIntentHandler,
+                        QueryFireStateIntentHandler,
+                        SessionEndedRequestHandler)
+    .addErrorHandlers(ErrorHandler)
+    .lambda();

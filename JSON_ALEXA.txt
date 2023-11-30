@@ -1,0 +1,186 @@
+{
+    "interactionModel": {
+        "languageModel": {
+            "invocationName": "bombero carlos",
+            "intents": [
+                {
+                    "name": "AMAZON.CancelIntent",
+                    "samples": []
+                },
+                {
+                    "name": "AMAZON.HelpIntent",
+                    "samples": [
+                        "Como puedo avanzar",
+                        "Como puedo consultar si hay fuego",
+                        "Como te puedo configurar",
+                        "Como te puedo usar",
+                        "Que capacidades tienes",
+                        "Que puedes hacer",
+                        "Que puedo hacer",
+                        "Como puedo configurar mi bombero",
+                        "Ayuda"
+                    ]
+                },
+                {
+                    "name": "AMAZON.StopIntent",
+                    "samples": []
+                },
+                {
+                    "name": "AvanzarIntent",
+                    "slots": [
+                        {
+                            "name": "centimetros",
+                            "type": "AMAZON.NUMBER"
+                        }
+                    ],
+                    "samples": [
+                        "Bombero avanza {centimetros} centimetros",
+                        "Quiero que avances {centimetros} centimetros",
+                        "Avanzar {centimetros} centimetros"
+                    ]
+                },
+                {
+                    "name": "AMAZON.NavigateHomeIntent",
+                    "samples": []
+                },
+                {
+                    "name": "StopIntent",
+                    "slots": [],
+                    "samples": [
+                        "stop",
+                        "parar movimiento",
+                        "parar",
+                        "detener movimiento",
+                        "bombero quedate quieto",
+                        "detener",
+                        "detente"
+                    ]
+                },
+                {
+                    "name": "QueryIntent",
+                    "slots": [],
+                    "samples": [
+                        "Cuál es el estado",
+                        "Cuál es el estado del led interno"
+                    ]
+                },
+                {
+                    "name": "RegisterDeviceIntent",
+                    "slots": [
+                        {
+                            "name": "id",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "registro {id}",
+                        "registrar {id}"
+                    ]
+                },
+                {
+                    "name": "ChooseDeviceIntent",
+                    "slots": [
+                        {
+                            "name": "id",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "configurar {id}",
+                        "Quiero configurar {id}"
+                    ]
+                },
+                {
+                    "name": "CheckThingNameIntent",
+                    "slots": [],
+                    "samples": [
+                        "Que dispositivo estoy configurando",
+                        "Cual es el nombre de mi dispositivo actual"
+                    ]
+                },
+                {
+                    "name": "TurnLeftIntent",
+                    "slots": [],
+                    "samples": [
+                        "izquierda",
+                        "Andate a la izquierda",
+                        "Girar izquierda"
+                    ]
+                },
+                {
+                    "name": "TurnRightIntent",
+                    "slots": [],
+                    "samples": [
+                        "derecha",
+                        "andate a la derecha",
+                        "Girar derecha"
+                    ]
+                },
+                {
+                    "name": "TurnOnBombaIntent",
+                    "slots": [],
+                    "samples": [
+                        "Apagar fuego",
+                        "Encender la bomba",
+                        "Chisgueteale",
+                        "Dispara agua",
+                        "Apaga la llama",
+                        "Auxilio hay fuego",
+                        "Apurate apaga",
+                        "Hay fuego ayuda",
+                        "Encende la bomba",
+                        "Apaga el fuego"
+                    ]
+                },
+                {
+                    "name": "QueryTemperatureIntent",
+                    "slots": [],
+                    "samples": [
+                        "Que temperatura existe actualmente",
+                        "que temperatura estas detectado",
+                        "A que temperatura esta el objeto de enfrete",
+                        "por favor dame la temperatura",
+                        "Cual es la temperatura"
+                    ]
+                },
+                {
+                    "name": "QueryFlameSensorStateIntent",
+                    "slots": [],
+                    "samples": [
+                        "Hay flama",
+                        "Cual es el estado del sensor de flama",
+                        "Existe flama"
+                    ]
+                },
+                {
+                    "name": "QueryFireStateIntent",
+                    "slots": [],
+                    "samples": [
+                        "Detectaste fuego",
+                        "Dime si has detectado fuego",
+                        "Existe fuego",
+                        "Has detectado fuego",
+                        "Hay fuego"
+                    ]
+                },
+                {
+                    "name": "GoBackIntent",
+                    "slots": [
+                        {
+                            "name": "centimetros",
+                            "type": "AMAZON.NUMBER"
+                        }
+                    ],
+                    "samples": [
+                        "Ir atrás {centimetros} centimetros",
+                        " Retroceso {centimetros} centimetros",
+                        "Marcha atras {centimetros} centimetros",
+                        "Anda atras {centimetros} centimetros",
+                        "Retroceder {centimetros} centimetros"
+                    ]
+                }
+            ],
+            "types": []
+        }
+    }
+}
