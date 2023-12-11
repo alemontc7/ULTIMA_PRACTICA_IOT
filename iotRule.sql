@@ -1,0 +1,1 @@
+SELECT timestamp() AS timestamp , topic (3) AS thing_name, state.reported.temperatura AS temperatura FROM '$aws/things/+/shadow/update' WHERE state.reported.temperatura <> NULL

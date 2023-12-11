@@ -1,0 +1,1 @@
+SELECT from_unixtime(Timestamp / 1000, 'UTC-4') as date_time,thing_name,sensorflama,firestate FROM deteccionfuego_datastore WHERE firestate = true LIMIT 10

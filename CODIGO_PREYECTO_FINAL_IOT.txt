@@ -3,7 +3,12 @@
 #include <ArduinoJson.h>
 #include <Adafruit_MLX90614.h>
 #include <DFRobot_MLX90614.h>
-DFRobot_MLX90614_I2C sensor;   
+#include <WiFiManager.h> 
+
+
+WiFiClientSecure wiFiClient;
+PubSubClient mqttClient(wiFiClient);
+DFRobot_MLX90614_I2C sensor;
 
 #define enA 19
 #define enB 18
@@ -11,20 +16,24 @@ DFRobot_MLX90614_I2C sensor;
 #define in2 33  
 #define in3 25 
 #define in4 26 
-
 #define SENSOR_FLAMA_PIN 2
 #define WATER_PUMP_PIN 14 
 
+float PREVIOUS_TEMPERATURE_OBJECT = 0;
 
-const char * WIFI_SSID = "Flia-SEJAS";
-const char * WIFI_PASS = "2742127hugo";
+unsigned long previousSendMillis = 0;
+const long interval = 5000; 
+
+unsigned long previousConnectMillis = 0;
+
+const char * WIFI_SSID = "pruebaIOT";
+const char * WIFI_PASS = "contra123";
 
 const char * MQTT_BROKER = "a2h727x7dlfrio-ats.iot.us-east-2.amazonaws.com";
 const int MQTT_BROKER_PORT = 8883;
 
 const char * MQTT_CLIENT_ID = "ESP32_CLIENT";
 const char * UPDATE_ACCEPTED_TOPIC = "$aws/things/bombero/shadow/update/accepted";
-const char * TOPIC_BOMBA = "check/bomba";
 const char * UPDATE_TOPIC = "$aws/things/bombero/shadow/update";
 
 const char AMAZON_ROOT_CA1[] PROGMEM = R"EOF(
@@ -103,50 +112,23 @@ FbWS6uEOyj2WKyTIJlAZw/zpXFuI1HoCaVHuFZ7aBrXLzv5NE34nbRGJP5gJVB2h
 -----END RSA PRIVATE KEY-----
 )KEY";
 
-WiFiClientSecure wiFiClient;
-PubSubClient mqttClient(wiFiClient);
 
-String builtInLed = "unknown";
+
+String action = "unknown";
 
 
 StaticJsonDocument<JSON_OBJECT_SIZE(6)> outputDoc;
 char outputBuffer[128];
-void reportBuiltInLed()
+
+void setAction(String desiredAction, int centimeters)
 {
-  outputDoc["state"]["reported"]["movimiento"] = builtInLed.c_str();
-  serializeJson(outputDoc, outputBuffer);
-  mqttClient.publish(UPDATE_TOPIC, outputBuffer);
-
-}
-
-
-void setBuiltInLed(String str, int cm)
-{
-  builtInLed = str;
-  if(builtInLed == "quieto" ){
-    Stop();
-  } else if(builtInLed == "girarIzquierda"){
-     turnLeft();
-     delay(800);
-     Stop();
-     delay(800);
-  } else if(builtInLed == "girarDerecha"){
-     turnRight();
-     delay(1000);
-     Stop();
-     delay(3000);
-  } else if(builtInLed =="avanzar"){
-     Forward();
-     delay(AdvanceInCentimeters(cm));
-     Stop();
-  } else if(builtInLed =="encendida"){
-     activatePump();
-     digitalWrite(WATER_PUMP_PIN, HIGH);
-  } else if(builtInLed =="retroceder"){
-     backword();
-     delay(AdvanceInCentimeters(cm));
-     Stop();
-  }
+  action =  desiredAction;
+  if(desiredAction == "quieto" ) Stop();
+  if(desiredAction == "girarIzquierda") turnLeft();
+  if(desiredAction == "girarDerecha") turnRight();
+  if(desiredAction == "avanzar") goForward(centimeters);
+  if(desiredAction == "encendida") activateWaterPump();
+  if(desiredAction == "retroceder") goBackwards(centimeters);
 }
 
 StaticJsonDocument<JSON_OBJECT_SIZE(64)> inputDoc;
@@ -160,20 +142,10 @@ void callback(const char * topic, byte * payload, unsigned int lenght) {
     Serial.println("Message from topic " + String(topic) + ":" + message);
     DeserializationError err = deserializeJson(inputDoc, payload);
     if (!err) {
-      String tmpbuiltInLed = String(inputDoc["state"]["desired"]["movimiento"].as<const char*>());
+      String desiredAction = String(inputDoc["state"]["desired"]["movimiento"].as<const char*>());
       int distance = inputDoc["state"]["desired"]["distancia"];
-      Serial.println(distance);
-      //if(!tmpbuiltInLed.isEmpty() && !tmpbuiltInLed.equals(builtInLed)) setBuiltInLed(tmpbuiltInLed,distance);
-      setBuiltInLed(tmpbuiltInLed, distance);
+      setAction(desiredAction, distance);
     }
-  }else if(String(topic) == TOPIC_BOMBA){
-    Serial.println("Message from topic " + String(topic) + ":" + message);
-    DeserializationError err = deserializeJson(inputDoc, payload);
-    if (!err) {
-      String tmpbuiltInLed = String(inputDoc["estadoBomba"].as<const char*>());
-      activatePump();
-    }
-
   }
 }
 
@@ -183,45 +155,35 @@ boolean mqttClientConnect() {
     Serial.println("DONE!");
     mqttClient.subscribe(UPDATE_ACCEPTED_TOPIC);
     Serial.println("Subscribed to " + String(UPDATE_ACCEPTED_TOPIC));
-    mqttClient.subscribe(TOPIC_BOMBA);
-    Serial.println("Subscribed to " + String(TOPIC_BOMBA));
   } else {
     Serial.println("Can't connect to " + String(MQTT_BROKER));
   }
   return mqttClient.connected();
 }
 
-void setup() {
-
+void setupMotorPins() {
   pinMode(enA, OUTPUT); 
   pinMode(enB, OUTPUT); 
   pinMode(in1, OUTPUT); 
   pinMode(in2, OUTPUT); 
   pinMode(in3, OUTPUT); 
   pinMode(in4, OUTPUT);
+}
 
-  Serial.begin(115200);
+void setupSensor() {
   sensor.enterSleepMode();
   delay(50);
   sensor.enterSleepMode(false);
   delay(200);
-  
-  pinMode(SENSOR_FLAMA_PIN, INPUT);  
-  pinMode(WATER_PUMP_PIN, OUTPUT);
- 
+}
 
-  Serial.begin(115200); 
+void setupWifiManager() {
+  WiFiManager wifiManager;
+  wifiManager.autoConnect("ESP32Device");
+  Serial.println("Connected to WiFi!");
+}
 
-  
-  Serial.print("Connecting to " + String(WIFI_SSID));
-
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(200);
-    Serial.print(".");
-  }
-  Serial.println(" DONE!");
-
+void setupMQTT() {
   wiFiClient.setCACert(AMAZON_ROOT_CA1);
   wiFiClient.setCertificate(CERTIFICATE);
   wiFiClient.setPrivateKey(PRIVATE_KEY);
@@ -230,15 +192,25 @@ void setup() {
   mqttClient.setCallback(callback);
 }
 
-unsigned long previousConnectMillis = 0;
+void setup() {
+  Serial.begin(115200); 
+  setupMotorPins();
+  setupSensor();
+  pinMode(SENSOR_FLAMA_PIN, INPUT);  
+  pinMode(WATER_PUMP_PIN, OUTPUT);
+  setupWifiManager();
+  setupMQTT();
+}
 
-void Forward(){
+void goForward(int centimeters){
  digitalWrite(in1, LOW); 
  digitalWrite(in2, HIGH);  
  digitalWrite(in3, LOW);   
  digitalWrite(in4, HIGH); 
  analogWrite(enA, 100);
  analogWrite(enB, 100);
+ delay(AdvanceInCentimeters(centimeters));
+ Stop();
 }
 
 void Stop(){
@@ -257,8 +229,10 @@ void turnLeft(){
   digitalWrite(in4, HIGH); 
   analogWrite(enA, 100);
   analogWrite(enB, 100);
-
- }
+  delay(800);
+  Stop();
+  delay(800);
+}
 
  void turnRight(){
   digitalWrite(in1, LOW); 
@@ -267,18 +241,23 @@ void turnLeft(){
   digitalWrite(in4, LOW); 
   analogWrite(enA, 100);
   analogWrite(enB, 100);
+  delay(1000);
+  Stop();
+  delay(3000);
  }
 
-void backword(){
+void goBackwards(int centimeters){
   digitalWrite(in1, HIGH); 
   digitalWrite(in2, LOW);  
   digitalWrite(in3, HIGH);   
   digitalWrite(in4, LOW); 
   analogWrite(enA, 100);
   analogWrite(enB, 100);
+  delay(AdvanceInCentimeters(centimeters));
+  Stop();
 }
 
- void activatePump(){
+ void activateWaterPump(){
    digitalWrite(WATER_PUMP_PIN, LOW);
    delay(1000);
    digitalWrite(WATER_PUMP_PIN, HIGH);
@@ -287,18 +266,42 @@ void backword(){
  int AdvanceInCentimeters(int centimeters){
    centimeters += 3;
    return centimeters*31;
- 
  }
- 
-int FireReport = 1 ;
-float previousReportedTemp = 0;
 
-float previousTempObject = 0;
-float previousTempAmbient = 0;
+void turnOffWaterPump()
+{
+  digitalWrite(WATER_PUMP_PIN, HIGH);
+}
+
+bool isThereFire(float objectTemperature, int flameSensorValue){
+    return abs(objectTemperature - PREVIOUS_TEMPERATURE_OBJECT) >= 1 && flameSensorValue == 0 && objectTemperature > 50.0;
+}
+
+void processSensorData(unsigned long currentMillis){
+    float objectTemperature = sensor.getObjectTempCelsius();
+    int flameSensorValue = digitalRead(SENSOR_FLAMA_PIN);
+    bool fireState = false;
+    if(isThereFire(objectTemperature, flameSensorValue)) {
+     fireState = true; 
+     outputDoc["state"]["reported"]["fireState"] = fireState;
+     outputDoc["state"]["reported"]["sensorFlama"] = !flameSensorValue;
+     outputDoc["state"]["reported"]["temperatura"] = int(objectTemperature);
+     serializeJson(outputDoc, outputBuffer);
+     mqttClient.publish(UPDATE_TOPIC, outputBuffer);
+    }
+    else if(currentMillis - previousSendMillis >= interval) {
+        previousSendMillis = currentMillis;
+        outputDoc["state"]["reported"]["fireState"] = fireState;
+        outputDoc["state"]["reported"]["sensorFlama"] = !flameSensorValue;
+        outputDoc["state"]["reported"]["temperatura"] = int(objectTemperature);
+        serializeJson(outputDoc, outputBuffer);
+        mqttClient.publish(UPDATE_TOPIC, outputBuffer);
+    }
+    PREVIOUS_TEMPERATURE_OBJECT = objectTemperature;
+}
 
 void loop() {
-  digitalWrite(WATER_PUMP_PIN, HIGH);
-  
+  turnOffWaterPump();
   unsigned long now = millis();
   if (!mqttClient.connected()) {
     if (now - previousConnectMillis >= 2000) {
@@ -307,27 +310,7 @@ void loop() {
       else delay(1000);
     }
   } else { 
-    float objectTemp = sensor.getObjectTempCelsius();
-    int valueSensor = digitalRead(SENSOR_FLAMA_PIN);
-    if (abs(objectTemp - previousTempObject) >= 1 && valueSensor == 0 && objectTemp > 50.0){
-        outputDoc["state"]["reported"]["fireState"] = true;
-        outputDoc["state"]["reported"]["sensorFlama"] = !valueSensor;
-        outputDoc["state"]["reported"]["temperatura"] = int(objectTemp);
-        serializeJson(outputDoc, outputBuffer);
-        mqttClient.publish(UPDATE_TOPIC, outputBuffer); 
-        FireReport = valueSensor; 
-        Serial.println("Esta caliente");
-    }
-    else{
-      outputDoc["state"]["reported"]["fireState"] = false;
-      outputDoc["state"]["reported"]["sensorFlama"] = !valueSensor;
-      outputDoc["state"]["reported"]["temperatura"] = int(objectTemp);
-      serializeJson(outputDoc, outputBuffer);
-      mqttClient.publish(UPDATE_TOPIC, outputBuffer); 
-      FireReport = valueSensor; 
-      previousTempObject = objectTemp;
-    }
-    previousTempObject = objectTemp;
+    processSensorData(now);
     mqttClient.loop();
     delay(20);
   }

@@ -1,0 +1,1 @@
+SELECT "encendida" AS movimiento, topic (3) AS thing_name FROM '$aws/things/+/shadow/update' WHERE state.reported.fireState = true
